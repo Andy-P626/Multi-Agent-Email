@@ -1,0 +1,2 @@
+Ceci est un exemple de document de connaissance interne.
+On y mettrait des infos client, FAQ, politiques de prix, etc.
