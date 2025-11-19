@@ -1,20 +1,6 @@
-# This file turns the 'agents' directory into a Python package,
-# allowing the orchestrator to import all agent classes directly.
+"""Graph package exports for the orchestrator."""
 
-# Import all agent classes from their respective (assumed) modules
-# within the 'agents' package.
+# Export the orchestrator classes for top-level imports
+from .orchestrator import EmailAutomationOrchestrator, Orchestrator
 
-from .intent_classifier import IntentClassifierAgent
-from .retriever import RetrieverAgent
-from .drafter import DrafterAgent
-from .safety_reviewer import SafetyReviewerAgent
-from .external_tool import ExternalToolAgent
-
-# Optionally, define what gets exported when 'from agents import *' is used.
-__all__ = [
-    "IntentClassifierAgent",
-    "RetrieverAgent",
-    "DrafterAgent",
-    "SafetyReviewerAgent",
-    "ExternalToolAgent"
-]
+__all__ = ["EmailAutomationOrchestrator", "Orchestrator"]

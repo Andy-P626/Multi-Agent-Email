@@ -1,15 +1,36 @@
 import os
 from typing import TypedDict, Annotated, List
-from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.prebuilt import ToolNode
-from langfuse import Langfuse
-from langfuse.callback import CallbackHandler
-from langgraph.graph.message import add_messages
+
+# Optional imports for LangGraph/Langfuse — guard so module can be imported
+HAS_LANGGRAPH = True
+try:
+    from langgraph.graph import StateGraph, END, START
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.prebuilt import ToolNode
+    from langgraph.graph.message import add_messages
+except Exception:
+    # LangGraph not installed in the environment; provide lightweight fallbacks
+    HAS_LANGGRAPH = False
+    StateGraph = None
+    END = None
+    START = None
+    SqliteSaver = None
+    ToolNode = None
+    def add_messages(x):
+        return x
+
+HAS_LANGFUSE = True
+try:
+    from langfuse import Langfuse
+    from langfuse.callback import CallbackHandler
+except Exception:
+    HAS_LANGFUSE = False
+    Langfuse = None
+    CallbackHandler = None
 
 # Import the agent classes defined in the 'agents' directory
 # NOTE: Ensure your agents/__init__.py file is correct for these imports to work.
-from agents import (
+from ..agents import (
     IntentClassifierAgent,
     RetrieverAgent,
     DrafterAgent,
@@ -36,7 +57,10 @@ from agents import (
 
 # Placeholder for real initialization (assuming environment variables are set)
 LgFuse_callback = None
-Memory = SqliteSaver.from_conn_string(":memory:")
+if SqliteSaver is not None:
+    Memory = SqliteSaver.from_conn_string(":memory:")
+else:
+    Memory = None
 
 
 # --- 2. STATE DEFINITION ---
@@ -325,6 +349,62 @@ def run_orchestrator(query: str, thread_id: str):
     print(f"Citations: {final_state.values['citations']}")
     print(f"Workflow Path:\n" + "\n".join(final_state.values['agent_history']))
 
+
+class Orchestrator:
+    """Compatibility adapter exposing a small imperative API expected by the FastAPI server.
+
+    Methods implemented:
+    - create_draft(task) -> (draft, safety_report, routing_decision, context, external_info)
+    - approve_and_send(..., send=False) -> FinalEmail
+    """
+    def __init__(self):
+        # Do not call the heavy EmailAutomationOrchestrator initializer (it requires langgraph).
+        # Instead, instantiate only the agent classes we need for the simple adapter.
+        self._intent = IntentClassifierAgent()
+        self._retriever = RetrieverAgent()
+        self._drafter = DrafterAgent()
+        self._safety = SafetyReviewerAgent()
+        self._external = ExternalToolAgent()
+
+    def create_draft(self, task):
+        # Accept either pydantic model or dict-like
+        try:
+            intent_res = self._intent.classify_intent(task)
+        except Exception:
+            intent_res = {"intent_label": "General_Inquiry", "needs_external_search": False}
+
+        context = self._retriever.retrieve_context(task, intent_res)
+
+        external_info = None
+        if intent_res.get("needs_external_search"):
+            external_info = self._external.fetch_external_info(task, intent_res)
+
+        draft = self._drafter.draft_email(task, context, external_info=external_info)
+
+        safety_result = self._safety.review_context("\n\n".join(context.snippets) if hasattr(context, "snippets") else "")
+
+        # Convert safety result to SafetyReport-like simple object
+        from ..models import SafetyReport, FinalEmail
+
+        approved = False
+        notes = []
+        redacted = draft.body if hasattr(draft, "body") else ""
+        if isinstance(safety_result, dict):
+            approved = safety_result.get("review_status", "FAIL") == "PASS"
+            notes = [safety_result.get("review_notes", "")] if safety_result.get("review_notes") else []
+
+        safety_report = SafetyReport(approved=approved, issues=notes, redacted_body=redacted)
+
+        routing = "send" if approved else "human_approval"
+
+        return draft, safety_report, routing, context, external_info
+
+    def approve_and_send(self, task, draft, safety, routing_decision, context, external_info, send: bool = False):
+        from ..models import FinalEmail
+
+        final = FinalEmail(recipient=task.recipient, subject=draft.subject, body=draft.body)
+        # If send=True, integrate with email sender; here we only simulate
+        return final
 
 if __name__ == "__main__":
     # Simulate a user query

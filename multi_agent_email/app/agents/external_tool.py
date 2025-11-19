@@ -4,16 +4,7 @@ import requests
 import os
 import time
 from typing import Dict, Optional, Any
-from dataclasses import dataclass
-
-# --- Dependency Models (Copied from Intent Agent for self-contained use) ---
-@dataclass
-class EmailTask:
-    session_id: str
-    recipient: str
-    subject_hint: str
-    body_hint: str
-    task_description: str
+from ..models import EmailTask
 
 # --- Agent Definition ---
 

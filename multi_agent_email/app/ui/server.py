@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 
-from app.graph.orchestrator import Orchestrator
-from app.models import EmailTask, FinalEmail
+from ..graph.orchestrator import Orchestrator
+from ..models import EmailTask, FinalEmail
 
 
 app = FastAPI(title="Multi-Agent Email & Task Automation Assistant")

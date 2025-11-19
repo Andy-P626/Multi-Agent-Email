@@ -4,16 +4,7 @@ import requests
 import os
 import time
 from typing import Dict, List
-from dataclasses import dataclass
-
-# --- Dependency Models (Copied from Intent Agent for self-contained use) ---
-@dataclass
-class EmailTask:
-    session_id: str
-    recipient: str
-    subject_hint: str
-    body_hint: str
-    task_description: str
+from ..models import EmailTask, RetrievedContext
 
 # --- Knowledge Base Mock (Simulates Vector Store Retrieval) ---
 
@@ -211,7 +202,7 @@ class RetrieverAgent:
                 return "Error: Failed to synthesize context from internal documents."
 
 
-    def retrieve_context(self, task: EmailTask, intent_result: Dict) -> Dict:
+    def retrieve_context(self, task: EmailTask, intent_result: Dict) -> RetrievedContext:
         """
         Main method to retrieve, synthesize, and package the context using Chroma.
         """
@@ -243,13 +234,9 @@ class RetrieverAgent:
         escalation = self._determine_escalation(intent_label, task.body_hint)
         
         # 5. Build Final Structured Output
-        final_output = {
-            "retrieved_context": synthesized_context,
-            "confidence_score": confidence_score,
-            "escalation_required": escalation,
-        }
-        
-        return final_output
+        # Return a RetrievedContext instance for downstream agents
+        snippets = [doc['page_content'] for doc in retrieved_documents]
+        return RetrievedContext(snippets=snippets, confidence=confidence_score)
 
 # --- Example Usage (Testing the Agent) ---
 if __name__ == '__main__':

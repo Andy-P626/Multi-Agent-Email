@@ -4,7 +4,7 @@ import os
 import time
 import requests # Import the requests library for API calls
 from typing import Optional, List, Dict, Any
-from core_models import EmailTask, RetrievedContext, DraftEmail, DraftInput
+from ..models import EmailTask, RetrievedContext, DraftEmail
 
 class DrafterAgent:
     """
@@ -93,7 +93,9 @@ class DrafterAgent:
         context_parts.append(f"CUSTOMER'S ORIGINAL BODY HINT (Context for Tone/Language): {task.body_hint}")
         
         context_parts.append("\n--- INTERNAL CONTEXT (Synthesized Facts from Vector DB) ---")
-        context_parts.append(context.retrieved_context)
+        # Support RetrievedContext with `snippets` list
+        internal_text = "\n\n".join(context.snippets) if hasattr(context, "snippets") else getattr(context, "retrieved_context", "")
+        context_parts.append(internal_text)
 
         context_parts.append("\n--- EXTERNAL CONTEXT (Web Search Summary) ---")
         context_parts.append(external_info or "No external search information was needed or found.")

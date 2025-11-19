@@ -4,7 +4,6 @@ import os
 import time
 import requests
 from typing import Optional, Dict, Any
-from core_models import DraftInput # Assuming DraftInput contains all necessary context
 
 class SafetyReviewerAgent:
     """

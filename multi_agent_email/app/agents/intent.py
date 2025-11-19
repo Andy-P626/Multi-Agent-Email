@@ -3,18 +3,10 @@ import logging
 import requests
 import os 
 from typing import Dict
-from dataclasses import dataclass, field
 
-# Define the data structure for the email task, which will be the input
-@dataclass
-class EmailTask:
-    session_id: str
-    recipient: str
-    subject_hint: str
-    body_hint: str
-    task_description: str
+# Use the shared models from the app package
+from ..models import EmailTask
 
-# --- Agent Definition ---
 
 class IntentClassifierAgent:
     """
