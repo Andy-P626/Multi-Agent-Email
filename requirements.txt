@@ -1,0 +1,21 @@
+# Minimal requirements for Multi-Agent-Email
+# Core runtime
+fastapi>=0.90.0
+uvicorn[standard]>=0.20.0
+gradio>=3.0.0
+requests>=2.28.0
+pydantic>=1.10.0
+python-dotenv>=0.21.0
+
+# Optional / integration packages (install if you plan to use them)
+langgraph>=0.1.0 ; # optional — used by orchestrator when present
+langfuse>=0.1.0 ; # optional — observability/callbacks
+chromadb>=0.3.0 ; # optional: vector DB client (if not using mocked retriever)
+# Note: OpenAI client is not strictly required because agents use direct HTTP requests to the OpenAI REST API.
+# If you prefer the official client:
+openai>=0.27.0
+
+# Development / testing
+pytest>=7.0.0
+black>=23.0.0
+isort>=5.0.0
