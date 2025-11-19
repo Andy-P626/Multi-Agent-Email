@@ -1,29 +1,37 @@
+import os
+from time import sleep
+from typing import Optional
+
 import uvicorn
 from fastapi import FastAPI
 from langfuse import Langfuse
-from langfuse.model import CreateSpan
-from config import settings
-from time import sleep
-from typing import Optional
+
+# Compat avec anciennes/nouvelles versions du SDK Langfuse
+try:
+    from langfuse.model import CreateSpan  # type: ignore
+except ImportError:
+    CreateSpan = None
 
 # 1. Initialize FastAPI App
 app = FastAPI(title="LLM Assistant API with Langfuse Monitoring")
 
-# 2. Initialize Langfuse Client
-# The client is optional; if keys are missing, it will run without sending data.
+# 2. Initialize Langfuse Client (directement depuis les variables d'env)
 langfuse: Optional[Langfuse] = None
 try:
-    if settings.langfuse_public_key and settings.langfuse_secret_key:
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    host = os.getenv("LANGFUSE_HOST")
+
+    if public_key and secret_key:
         langfuse = Langfuse(
-            public_key=settings.langfuse_public_key,
-            secret_key=settings.langfuse_secret_key,
-            host=settings.langfuse_host,
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host,
         )
         print("Langfuse client initialized successfully.")
     else:
         print("Warning: Langfuse keys are not set. Monitoring will be disabled.")
 except Exception as e:
-    # Handle networking or setup errors for Langfuse
     print(f"Failed to initialize Langfuse: {e}")
     langfuse = None
 
@@ -33,61 +41,102 @@ def read_root():
     """Simple health check endpoint."""
     return {"message": "LLM Assistant API is running."}
 
-@app.post("/langfuse_trace")
-async def start_llm_workflow(prompt: str = "Summarize the latest trends in generative AI."):
-    """
-    Simulates a full agent workflow and sends a trace to Langfuse for monitoring.
-    This simulates the steps your orchestrator would take.
-    """
-    if not langfuse:
-        return {"status": "error", "message": "Langfuse monitoring is disabled."}
 
-    # Start the top-level trace for this user interaction
+@app.post("/langfuse_trace")
+async def start_llm_workflow(
+    prompt: str = "Summarize the latest trends in generative AI.",
+):
+    """
+    Simulates a full agent workflow.
+    - Si Langfuse est disponible et expose .trace, on envoie les spans.
+    - Sinon, on exécute le workflow sans monitoring.
+    """
+
+    # Si pas de client Langfuse OU pas de méthode .trace -> pas de monitoring
+    if not langfuse or not hasattr(langfuse, "trace"):
+        # --- Workflow "simple", sans Langfuse ---
+        sleep(0.1)
+        retrieved_context = (
+            "The latest trends involve large multimodal models and "
+            "local deployment optimization."
+        )
+        sleep(0.5)
+        final_response = (
+            f"Based on context: {retrieved_context}. Here is a concise summary."
+        )
+
+        return {
+            "status": "success",
+            "trace_id": None,
+            "message": "Workflow completed (Langfuse monitoring disabled or unsupported SDK).",
+            "response": final_response,
+        }
+
+    # --- Ici : version avec Langfuse, si .trace existe vraiment ---
     trace = langfuse.trace(
         name="Agent_Workflow_Execution",
-        user_id="user-42", # Example unique ID for the user
-        input=prompt
+        user_id="user-42",  # Example unique ID for the user
+        input=prompt,
     )
 
     # --- Step 1: Simulate RAG/Database Retrieval (Span 1) ---
-    retrieval_span = trace.span(
-        CreateSpan(
+    if CreateSpan is not None:
+        retrieval_span = trace.span(
+            CreateSpan(
+                name="ChromaDB_Retrieval",
+                input={"query": prompt},
+                metadata={"collection": "docs_index"},
+            )
+        )
+    else:
+        retrieval_span = trace.span(
             name="ChromaDB_Retrieval",
             input={"query": prompt},
-            metadata={"collection": "docs_index"}
+            metadata={"collection": "docs_index"},
         )
+
+    sleep(0.1)  # Simulate network/database time
+    retrieved_context = (
+        "The latest trends involve large multimodal models and "
+        "local deployment optimization."
     )
-    sleep(0.1) # Simulate network/database time
-    retrieved_context = "The latest trends involve large multimodal models and local deployment optimization."
     retrieval_span.end(output={"context": retrieved_context})
 
     # --- Step 2: Simulate LLM Call (Span 2) ---
-    llm_span = trace.span(
-        CreateSpan(
-            name="OpenAI_Call_Summary",
-            input={"model": "gpt-4o-mini", "prompt": prompt, "context": retrieved_context},
-            metadata={"temperature": 0.7}
+    if CreateSpan is not None:
+        llm_span = trace.span(
+            CreateSpan(
+                name="OpenAI_Call_Summary",
+                input={
+                    "model": "gpt-4o-mini",
+                    "prompt": prompt,
+                    "context": retrieved_context,
+                },
+                metadata={"temperature": 0.7},
+            )
         )
+    else:
+        llm_span = trace.span(
+            name="OpenAI_Call_Summary",
+            input={
+                "model": "gpt-4o-mini",
+                "prompt": prompt,
+                "context": retrieved_context,
+            },
+            metadata={"temperature": 0.7},
+        )
+
+    sleep(0.5)  # Simulate LLM response time
+    final_response = (
+        f"Based on context: {retrieved_context}. Here is a concise summary."
     )
-    sleep(0.5) # Simulate LLM response time
-    final_response = f"Based on context: {retrieved_context}. Here is a concise summary."
     llm_span.end(output={"response": final_response, "token_usage": 150})
-    
-    # Optionally, tag the trace with a final status
+
     trace.update(status="Success")
-    
+
     return {
-        "status": "success", 
+        "status": "success",
         "trace_id": trace.id,
-        "message": f"Workflow completed. View trace {trace.id} in Langfuse."
+        "message": f"Workflow completed. View trace {trace.id} in Langfuse.",
+        "response": final_response,
     }
-
-# To run the application: uvicorn main:app --reload
-if __name__ == "__main__":
-    # The application is assumed to be in the 'app.ui.server' module 
-    # based on your initial prompt. I've adjusted this to run the 
-    # 'app' object in this file ('main:app') for simplicity.
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# The API endpoint (likely generated by FastAPI's docs) that users can access for drafting emails.
-# http://127.0.0.1:8000/docs#/default/create_email_draft_email_draft_post
