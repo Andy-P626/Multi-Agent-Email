@@ -7,3 +7,4 @@ chromadb
 requests
 tavily-python 
 langfuse 
+streamlit
