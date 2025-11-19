@@ -1,15 +1,19 @@
 {
 	"folders": [
 		{
+			"name": "Multi-Agent-Email",
 			"path": "../../../../Documents/GitHub/Multi-Agent-Email"
 		},
 		{
+			"name": "data",
 			"path": ".."
 		},
 		{
+			"name": "app",
 			"path": "../../app"
 		},
 		{
+			"name": "scripts",
 			"path": "../../scripts"
 		}
 	],
