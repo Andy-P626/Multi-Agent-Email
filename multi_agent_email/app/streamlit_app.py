@@ -59,12 +59,9 @@ def run_llm_workflow(prompt: str):
     """
     Import tardif de main.start_llm_workflow pour que les variables
     d'environnement aient été définies par ensure_env_vars().
-
-    On appelle ensuite la coroutine via asyncio.run().
     """
-    from main import start_llm_workflow  # import ici, pas en haut du fichier
+    from multi_agent_email.main import start_llm_workflow  # ✅ nouveau chemin
 
-    # start_llm_workflow est async -> on utilise asyncio.run
     return asyncio.run(start_llm_workflow(prompt=prompt))
 
 
