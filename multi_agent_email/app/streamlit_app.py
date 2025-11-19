@@ -1,15 +1,32 @@
 import os
+import sys
 import asyncio
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
 # ------------------------------------------------------------------
-# 1. Charger le .env (comme pour ton API FastAPI)
+# 0. Corriger le chemin d'import pour main.py
 # ------------------------------------------------------------------
-load_dotenv()
+# Ce fichier est dans :  .../multi_agent_email/app/streamlit_app.py
+# On ajoute le dossier parent (.../multi_agent_email) à sys.path
+CURRENT_FILE = Path(__file__).resolve()
+PROJECT_DIR = CURRENT_FILE.parent.parent  # => .../multi_agent_email
 
-# Variables nécessaires pour Langfuse (adaptées à ton main.py/config.py)
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+# Maintenant, on peut faire: from main import start_llm_workflow
+# ------------------------------------------------------------------
+# 1. Chargement des variables d'environnement (.env)
+# ------------------------------------------------------------------
+ENV_PATH = PROJECT_DIR / ".env"
+if ENV_PATH.exists():
+    load_dotenv(ENV_PATH)
+else:
+    load_dotenv()  # fallback: .env dans le cwd
+
 ENV_KEYS = [
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
@@ -18,49 +35,40 @@ ENV_KEYS = [
 
 
 def ensure_env_vars():
-    """
-    Vérifie/complète les variables d'environnement pour Langfuse.
-    On ne modifie pas ton code : on se contente de remplir os.environ
-    avant d'importer main.py.
-    """
     st.sidebar.header("⚙️ Configuration Langfuse")
-
     for key in ENV_KEYS:
         current = os.getenv(key)
-
         if current:
-            # On montre juste qu'il y en a une sans l'afficher
             st.sidebar.text_input(
                 key,
-                value="••••••••",
+                value="********",
                 type="password",
                 disabled=True,
-                help=f"{key} est déjà définie dans l'environnement / .env.",
+                help=f"{key} est déjà définie.",
             )
         else:
             value = st.sidebar.text_input(
                 key,
                 type="password",
-                help=f"{key} est manquante. Saisis-la pour cette session Streamlit.",
+                help=f"{key} est manquante. Saisis-la pour cette session.",
             )
             if value:
                 os.environ[key] = value
 
     st.sidebar.caption(
-        "Ces valeurs sont injectées dans os.environ avant l'import de main.py, "
-        "pour que config/settings et le client Langfuse soient correctement initialisés."
+        "Ces valeurs sont injectées dans os.environ avant l'import de main.py "
+        "pour que config/settings et Langfuse soient bien initialisés."
     )
 
 
 # ------------------------------------------------------------------
-# 2. Fonction qui appelle ton workflow existant (start_llm_workflow)
+# 2. Appel de ton workflow existant (start_llm_workflow dans main.py)
 # ------------------------------------------------------------------
 def run_llm_workflow(prompt: str):
     """
-    Import tardif de main.start_llm_workflow pour que les variables
-    d'environnement aient été définies par ensure_env_vars().
+    Appelle la coroutine async start_llm_workflow définie dans main.py.
     """
-    from multi_agent_email.main import start_llm_workflow  # ✅ nouveau chemin
+    from main import start_llm_workflow  # <-- maintenant visible grâce à sys.path
 
     return asyncio.run(start_llm_workflow(prompt=prompt))
 
@@ -68,57 +76,136 @@ def run_llm_workflow(prompt: str):
 # ------------------------------------------------------------------
 # 3. Interface Streamlit
 # ------------------------------------------------------------------
+def build_email_prompt(to: str, subject: str, incoming: str, instructions: str) -> str:
+    """
+    Construit un prompt clair pour le workflow LLM à partir des champs email.
+    """
+    to = to.strip() or "Destinataire non spécifié"
+    subject = subject.strip() or "Sans objet"
+    incoming = incoming.strip() or "Aucun email collé."
+    instructions = instructions.strip() or "Rédige une réponse professionnelle et concise."
+
+    return f"""
+You are an AI email assistant. Draft a clear, professional reply email.
+
+Recipient: {to}
+Subject: {subject}
+
+Incoming email:
+\"\"\"{incoming}\"\"\"
+
+Additional instructions for your reply:
+\"\"\"{instructions}\"\"\"
+
+Write only the body of the reply email (no header metadata). 
+Use appropriate greeting and closing.
+"""
+
 def main():
     st.set_page_config(
-        page_title="LLM Assistant – Langfuse Demo",
+        page_title="Email Assistant – Langfuse Demo",
         page_icon="📧",
-        layout="centered",
+        layout="wide",
     )
 
-    st.title("📧 LLM Assistant avec Langfuse (Streamlit)")
+    st.title("📧 Assistant d’email multi-agents (Streamlit)")
     st.caption(
-        "Interface Streamlit par-dessus ton endpoint FastAPI `/langfuse_trace`, "
-        "en appelant directement la fonction `start_llm_workflow`."
+        "Interface Streamlit par-dessus ton workflow LLM (fonction `start_llm_workflow`). "
+        "Ici on l’utilise pour rédiger des réponses d’email."
     )
 
-    # S'assure que les clés Langfuse sont bien présentes AVANT import de main.py
+    # Sidebar Langfuse (inchangé)
     ensure_env_vars()
 
-    st.markdown("### 🧾 Prompt à envoyer au workflow")
+    col_left, col_right = st.columns([2, 1])
 
-    prompt = st.text_area(
-        "Prompt",
-        value="Summarize the latest trends in generative AI.",
-        height=150,
-        placeholder="Écris ici ce que tu veux envoyer au workflow LLM…",
-    )
+    with col_left:
+        st.subheader("✉️ Email reçu")
 
-    if st.button("🚀 Lancer le workflow"):
-        if not prompt.strip():
-            st.warning("Merci de fournir un prompt.")
+        to = st.text_input(
+            "Destinataire (To)",
+            placeholder="ex: client@entreprise.com",
+        )
+
+        subject = st.text_input(
+            "Objet",
+            placeholder="ex: Proposition de partenariat",
+        )
+
+        incoming_email = st.text_area(
+            "Contenu de l’email reçu (copier/coller)",
+            height=260,
+            placeholder="Colle ici l’email auquel tu veux répondre…",
+        )
+
+    with col_right:
+        st.subheader("🧠 Instructions pour la réponse")
+
+        instructions = st.text_area(
+            "Style / contraintes",
+            height=260,
+            value="Réponse professionnelle, claire et concise, en français.",
+        )
+
+        st.markdown("---")
+        show_raw = st.checkbox(
+            "Afficher aussi la réponse brute (JSON renvoyé par l’API)",
+            value=True,
+        )
+
+        run_button = st.button("🚀 Générer la réponse d’email")
+
+    st.markdown("---")
+
+    if run_button:
+        if not incoming_email.strip():
+            st.warning("Merci de coller au moins le contenu de l’email reçu.")
             return
 
-        with st.spinner("Exécution du workflow (Langfuse trace en cours)…"):
+        prompt = build_email_prompt(
+            to=to,
+            subject=subject,
+            incoming=incoming_email,
+            instructions=instructions,
+        )
+
+        with st.spinner("Le workflow génère la réponse…"):
             try:
-                result = run_llm_workflow(prompt.strip())
+                result = run_llm_workflow(prompt)
             except Exception as e:
                 st.error(f"❌ Erreur pendant l'exécution : {e}")
                 return
 
         st.success("✅ Workflow terminé")
 
-        st.markdown("### 📦 Réponse brute")
-        st.json(result)
+        # --------- Extraction du corps de la réponse ---------
+        email_body = None
 
-        # Si le dict contient un message ou une info utile, on l'affiche joliment
         if isinstance(result, dict):
-            if "message" in result:
-                st.markdown("### ✍️ Message")
-                st.write(result["message"])
-            if "trace_id" in result:
-                st.markdown("### 🔎 Trace Langfuse")
-                st.write(f"Trace ID : `{result['trace_id']}`")
+            # notre version actuelle renvoie un champ "response"
+            email_body = result.get("response") or result.get("message")
+        elif isinstance(result, str):
+            email_body = result
+        else:
+            email_body = str(result)
 
+        # --------- Affichage du brouillon d’email ---------
+        st.subheader("✍️ Brouillon de réponse proposé")
 
-if __name__ == "__main__":
-    main()
+        final_subject = subject.strip() or "(Sans objet)"
+        final_subject = f"Re: {final_subject}"
+
+        st.markdown(f"**To :** {to or '(non spécifié)'}")
+        st.markdown(f"**Subject :** {final_subject}")
+        st.markdown("---")
+
+        if email_body:
+            st.write(email_body)
+        else:
+            st.info("Le workflow n’a pas renvoyé de texte de réponse exploitable.")
+
+        # --------- Affichage optionnel de la réponse brute ---------
+        if show_raw:
+            st.markdown("---")
+            st.subheader("📦 Réponse brute (JSON)")
+            st.json(result)
