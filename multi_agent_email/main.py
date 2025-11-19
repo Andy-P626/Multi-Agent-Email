@@ -1,142 +1,169 @@
-import os
-from time import sleep
-from typing import Optional
+import streamlit as st
+import requests
+import json
 
-import uvicorn
-from fastapi import FastAPI
-from langfuse import Langfuse
-
-# Compat avec anciennes/nouvelles versions du SDK Langfuse
-try:
-    from langfuse.model import CreateSpan  # type: ignore
-except ImportError:
-    CreateSpan = None
-
-# 1. Initialize FastAPI App
-app = FastAPI(title="LLM Assistant API with Langfuse Monitoring")
-
-# 2. Initialize Langfuse Client (directement depuis les variables d'env)
-langfuse: Optional[Langfuse] = None
-try:
-    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-    host = os.getenv("LANGFUSE_HOST")
-
-    if public_key and secret_key:
-        langfuse = Langfuse(
-            public_key=public_key,
-            secret_key=secret_key,
-            host=host,
-        )
-        print("Langfuse client initialized successfully.")
-    else:
-        print("Warning: Langfuse keys are not set. Monitoring will be disabled.")
-except Exception as e:
-    print(f"Failed to initialize Langfuse: {e}")
-    langfuse = None
+# The FastAPI service must be running on localhost:8000
+FASTAPI_ENDPOINT = "http://localhost:8000/langfuse_trace"
 
 
-@app.get("/")
-def read_root():
-    """Simple health check endpoint."""
-    return {"message": "LLM Assistant API is running."}
-
-
-@app.post("/langfuse_trace")
-async def start_llm_workflow(
-    prompt: str = "Summarize the latest trends in generative AI.",
-):
+# ------------------------------------------------------------------
+# 1. Build Prompt Function (Unchanged Logic)
+# ------------------------------------------------------------------
+def build_email_prompt(to: str, subject: str, incoming: str, instructions: str) -> str:
     """
-    Simulates a full agent workflow.
-    - Si Langfuse est disponible et expose .trace, on envoie les spans.
-    - Sinon, on exécute le workflow sans monitoring.
+    Constructs a clear, comprehensive prompt for the LLM workflow 
+    from the email input fields.
     """
+    to = to.strip() or "Unspecified Recipient"
+    subject = subject.strip() or "No Subject"
+    incoming = incoming.strip() or "No incoming email content provided."
+    instructions = instructions.strip() or "Draft a professional and concise reply."
 
-    # Si pas de client Langfuse OU pas de méthode .trace -> pas de monitoring
-    if not langfuse or not hasattr(langfuse, "trace"):
-        # --- Workflow "simple", sans Langfuse ---
-        sleep(0.1)
-        retrieved_context = (
-            "The latest trends involve large multimodal models and "
-            "local deployment optimization."
-        )
-        sleep(0.5)
-        final_response = (
-            f"Based on context: {retrieved_context}. Here is a concise summary."
-        )
+    return f"""
+You are an AI email assistant. Draft a clear, professional reply email.
 
-        return {
-            "status": "success",
-            "trace_id": None,
-            "message": "Workflow completed (Langfuse monitoring disabled or unsupported SDK).",
-            "response": final_response,
-        }
+Recipient: {to}
+Subject: {subject}
 
-    # --- Ici : version avec Langfuse, si .trace existe vraiment ---
-    trace = langfuse.trace(
-        name="Agent_Workflow_Execution",
-        user_id="user-42",  # Example unique ID for the user
-        input=prompt,
+Incoming email:
+\"\"\"{incoming}\"\"\"
+
+Additional instructions for your reply:
+\"\"\"{instructions}\"\"\"
+
+Write only the body of the reply email (no header metadata). 
+Use appropriate greeting and closing.
+"""
+
+# ------------------------------------------------------------------
+# 2. Streamlit Interface (Updated Core Logic)
+# ------------------------------------------------------------------
+def main():
+    st.set_page_config(
+        page_title="Email Assistant – Langfuse Demo",
+        page_icon="📧",
+        layout="wide",
     )
 
-    # --- Step 1: Simulate RAG/Database Retrieval (Span 1) ---
-    if CreateSpan is not None:
-        retrieval_span = trace.span(
-            CreateSpan(
-                name="ChromaDB_Retrieval",
-                input={"query": prompt},
-                metadata={"collection": "docs_index"},
-            )
-        )
-    else:
-        retrieval_span = trace.span(
-            name="ChromaDB_Retrieval",
-            input={"query": prompt},
-            metadata={"collection": "docs_index"},
-        )
-
-    sleep(0.1)  # Simulate network/database time
-    retrieved_context = (
-        "The latest trends involve large multimodal models and "
-        "local deployment optimization."
+    st.title("📧 Multi-Agent Email Assistant (Streamlit)")
+    st.caption(
+        "Client interface calling the **FastAPI backend** running on `localhost:8000/langfuse_trace`."
     )
-    retrieval_span.end(output={"context": retrieved_context})
 
-    # --- Step 2: Simulate LLM Call (Span 2) ---
-    if CreateSpan is not None:
-        llm_span = trace.span(
-            CreateSpan(
-                name="OpenAI_Call_Summary",
-                input={
-                    "model": "gpt-4o-mini",
-                    "prompt": prompt,
-                    "context": retrieved_context,
-                },
-                metadata={"temperature": 0.7},
-            )
-        )
-    else:
-        llm_span = trace.span(
-            name="OpenAI_Call_Summary",
-            input={
-                "model": "gpt-4o-mini",
-                "prompt": prompt,
-                "context": retrieved_context,
-            },
-            metadata={"temperature": 0.7},
-        )
-
-    sleep(0.5)  # Simulate LLM response time
-    final_response = (
-        f"Based on context: {retrieved_context}. Here is a concise summary."
+    # --- Instructions moved to sidebar ---
+    st.sidebar.header("⚠️ Required Setup")
+    st.sidebar.markdown(
+        """
+        You **MUST** run the backend API separately for this app to work.
+        
+        **1. Run the FastAPI Server:**
+        
+        ```bash
+        python main.py
+        ```
+        
+        **2. Run the Streamlit Client:**
+        
+        ```bash
+        streamlit run app/streamlit_app.py
+        ```
+        The server handles Langfuse initialization and the LLM call.
+        """
     )
-    llm_span.end(output={"response": final_response, "token_usage": 150})
 
-    trace.update(status="Success")
 
-    return {
-        "status": "success",
-        "trace_id": trace.id,
-        "message": f"Workflow completed. View trace {trace.id} in Langfuse.",
-        "response": final_response,
-    }
+    col_left, col_right = st.columns([2, 1])
+
+    with col_left:
+        st.subheader("✉️ Received Email Details")
+        to = st.text_input("Recipient (To)", placeholder="e.g., client@company.com", key="to_input")
+        subject = st.text_input("Subject", placeholder="e.g., Partnership Proposal", key="subject_input")
+        incoming_email = st.text_area(
+            "Content of the Received Email (Copy/Paste)",
+            height=260,
+            placeholder="Paste the email content you need to reply to here...",
+            key="incoming_email_input"
+        )
+
+    with col_right:
+        st.subheader("🧠 Instructions for the Reply")
+        instructions = st.text_area(
+            "Style / Constraints",
+            height=260,
+            value="Professional, clear, and concise reply, written in French.",
+            key="instructions_input"
+        )
+        st.markdown("---")
+        show_raw = st.checkbox(
+            "Show Raw JSON Response (from the backend)",
+            value=True,
+        )
+        run_button = st.button("🚀 Generate Email Reply", use_container_width=True, type="primary")
+
+    st.markdown("---")
+
+    if run_button:
+        if not incoming_email.strip():
+            st.warning("Please paste the content of the received email to continue.")
+            return
+
+        # 1. Build the LLM prompt
+        prompt = build_email_prompt(to=to, subject=subject, incoming=incoming_email, instructions=instructions)
+
+        # 2. Run the workflow by calling the HTTP API
+        with st.spinner(f"Calling FastAPI at {FASTAPI_ENDPOINT}..."):
+            try:
+                # Prepare the data payload for the API
+                data = json.dumps({"prompt": prompt})
+
+                # Send the POST request to the FastAPI endpoint
+                response = requests.post(
+                    FASTAPI_ENDPOINT,
+                    headers={"Content-Type": "application/json"},
+                    data=data,
+                    timeout=60 # Increased timeout for long LLM calls
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    st.success("✅ Workflow completed and API responded successfully!")
+                else:
+                    st.error(f"❌ API Error: Status Code {response.status_code}")
+                    st.json(response.json())
+                    return
+
+            except requests.exceptions.ConnectionError:
+                st.error(
+                    "❌ Connection Error: Could not connect to the FastAPI service at `http://localhost:8000`. "
+                    "**Action Required:** Please ensure you ran `python main.py` in a separate terminal."
+                )
+                return
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {e}")
+                return
+
+        # --------- Extract and Display the Response Body ---------
+        email_body = result.get("response") # Use .get() for safety
+
+        st.subheader("✍️ Proposed Reply Draft")
+
+        final_subject = subject.strip() or "(No Subject)"
+        final_subject = f"Re: {final_subject}"
+
+        st.markdown(f"**To :** {to or '(unspecified)'}")
+        st.markdown(f"**Subject :** {final_subject}")
+        st.markdown("---")
+
+        if email_body:
+            st.code(email_body, language="markdown")
+        else:
+            st.info("The API did not return a response body.")
+
+        # --------- Optional Display of Raw JSON ---------
+        if show_raw:
+            st.markdown("---")
+            st.subheader("📦 Raw Backend Response (JSON)")
+            st.json(result)
+
+if __name__ == "__main__":
+    main()
