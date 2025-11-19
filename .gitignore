@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 ===============================================
 
 Standard Python Ignore Rules
@@ -89,3 +90,10 @@ logs/
 Temporary files created during runtime
 
 tmp/
+=======
+.venv
+.env
+.chroma
+.pyc
+.DS_Store
+>>>>>>> Stashed changes
