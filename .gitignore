@@ -1,4 +1,13 @@
-<<<<<<< Updated upstream
+/.venv
+.env
+__pycache__/
+*.pyc
+.DS_Store
+logs.jsonl
+/.vscode
+.idea
+/.pytest_cache
+/.mypy_cache<<<<<<< Updated upstream
 ===============================================
 
 Standard Python Ignore Rules

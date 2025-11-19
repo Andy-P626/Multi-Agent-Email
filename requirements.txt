@@ -1,21 +1,28 @@
-# Minimal requirements for Multi-Agent-Email
-# Core runtime
-fastapi>=0.90.0
-uvicorn[standard]>=0.20.0
 gradio>=3.0.0
-requests>=2.28.0
-pydantic>=1.10.0
-python-dotenv>=0.21.0
+## Requirements for Multi-Agent-Email
 
-# Optional / integration packages (install if you plan to use them)
-langgraph>=0.1.0 ; # optional — used by orchestrator when present
-langfuse>=0.1.0 ; # optional — observability/callbacks
-chromadb>=0.3.0 ; # optional: vector DB client (if not using mocked retriever)
-# Note: OpenAI client is not strictly required because agents use direct HTTP requests to the OpenAI REST API.
-# If you prefer the official client:
+# Core runtime
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+gradio>=3.34.0
+requests>=2.31.0
+pydantic>=1.10.10
+python-dotenv>=1.0.0
+
+# LLM / API clients
 openai>=0.27.0
 
-# Development / testing
-pytest>=7.0.0
-black>=23.0.0
-isort>=5.0.0
+# Optional / integrations (install if you intend to use them)
+langgraph>=0.1.0; extra == "langgraph"  # optional workflow engine used by the orchestrator
+langfuse>=0.1.0; extra == "langfuse"    # optional observability/instrumentation
+chromadb>=0.3.29                         # optional vector DB client (if not using the mocked retriever)
+
+# Utility / developer
+pytest>=7.4.0
+black>=24.3.0
+isort>=5.12.0
+
+# Notes:
+# - Install the optional libraries only if you plan to enable the full LangGraph/Langfuse
+#   and Chroma functionality. The code includes lightweight fallbacks so the app can
+#   still run without these optional deps (good for local testing).

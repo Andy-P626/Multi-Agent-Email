@@ -4,7 +4,8 @@ import json
 from typing import Dict, Any, Tuple
 
 # The FastAPI service must be running on localhost:8000
-FASTAPI_ENDPOINT = "http://localhost:8000/langfuse_trace"
+# Use the /email/draft endpoint exposed by the FastAPI server
+FASTAPI_ENDPOINT = "http://localhost:8000/email/draft"
 
 
 # ------------------------------------------------------------------
@@ -39,10 +40,10 @@ Use appropriate greeting and closing.
 """
 
 def generate_email_reply(
-    to: str, 
-    subject: str, 
-    incoming_email: str, 
-    instructions: str
+    to: str,
+    subject: str,
+    incoming_email: str,
+    instructions: str,
 ) -> Tuple[str, str, str, str]:
     """
     The core function that the Gradio button calls. 
@@ -51,42 +52,36 @@ def generate_email_reply(
     if not incoming_email.strip():
         return "⚠️ Please paste the content of the received email to continue.", "", "", ""
 
-    # 1. Build the LLM prompt
-    prompt = build_email_prompt(
-        to=to, 
-        subject=subject, 
-        incoming=incoming_email, 
-        instructions=instructions
-    )
+    # Build a proper EmailTask payload expected by the FastAPI server
+    from uuid import uuid4
+
+    payload = {
+        "session_id": str(uuid4()),
+        "recipient": to.strip() or "",
+        "subject_hint": subject.strip() or "",
+        "body_hint": incoming_email.strip() or "",
+        "task_description": instructions.strip() or "Draft a professional reply.",
+    }
 
     try:
-        # Prepare the data payload for the API
-        data = json.dumps({"prompt": prompt})
-
-        # Send the POST request to the FastAPI endpoint
         response = requests.post(
             FASTAPI_ENDPOINT,
             headers={"Content-Type": "application/json"},
-            data=data,
-            timeout=60 # Increased timeout for LLM calls
+            data=json.dumps(payload),
+            timeout=60,
         )
 
         if response.status_code == 200:
             result = response.json()
-            
-            email_body = result.get("response", "API returned success but no 'response' field.")
+            # Expecting FinalEmail: {recipient, subject, body}
+            final_subject = result.get("subject", subject.strip() or "(No Subject)")
+            email_body = result.get("body", "")
+            message = "Success"
             trace_id = result.get("trace_id", "N/A")
-            message = result.get("message", "Success.")
-            
-            final_subject = subject.strip() or "(No Subject)"
-            final_subject = f"Re: {final_subject}"
-            
-            # Format the output fields
+
             output_body = f"Subject: {final_subject}\n\n{email_body}"
             output_raw = json.dumps(result, indent=2)
-            
             return message, trace_id, output_body, output_raw
-
         else:
             error_message = f"❌ API Error: Status Code {response.status_code}"
             raw_error = response.text
@@ -94,9 +89,7 @@ def generate_email_reply(
 
     except requests.exceptions.ConnectionError:
         error_msg = (
-            "❌ Connection Error: Could not connect to the FastAPI service at "
-            f"`{FASTAPI_ENDPOINT}`. **Action Required:** Please ensure you ran "
-            "`uvicorn main:app --host 0.0.0.0 --port 8000` in a separate terminal."
+            f"❌ Connection Error: Could not connect to the FastAPI service at {FASTAPI_ENDPOINT}."
         )
         return error_msg, "N/A", "", ""
     except Exception as e:
@@ -189,4 +182,4 @@ with gr.Blocks(title="Multi-Agent Email Assistant") as demo:
 
 if __name__ == "__main__":
     # Ensure you install Gradio: pip install gradio requests
-    demo.launch(inbrowser=True)
+    demo.launch(server_name="127.0.0.1", server_port=7860, inbrowser=False)
