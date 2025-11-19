@@ -3,14 +3,12 @@ import argparse
 import sys
 from pathlib import Path
 
-# --- AJOUT IMPORTANT : rendre le dossier du projet visible par Python ---
 ROOT_DIR = Path(__file__).resolve().parent.parent  # remonte de scripts/ à la racine du projet
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 # ------------------------------------------------------------------------
 
-from app.services.vector_store import get_vector_store  # maintenant ça doit marcher
-
+from app.services.vector_store import get_vector_store  
 
 def ingest_knowledge(path: str) -> None:
     root = Path(path)
@@ -39,7 +37,7 @@ def ingest_knowledge(path: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, required=True, help="Folder containing .txt files")
+    parser.add_argument("--path", type=str, required=True, default="data/knowledge", help="Folder containing .txt files")
     args = parser.parse_args()
     ingest_knowledge(args.path)
 
