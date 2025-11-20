@@ -125,8 +125,9 @@ class DrafterAgent:
                 {"role": "system", "content": self._get_system_instruction()},
                 {"role": "user", "content": full_user_prompt}
             ],
-            # Use the response_format parameter for guaranteed JSON output
-            "response_format": {"type": "json_object", "schema": response_schema},
+            # NOTE: the raw REST Chat Completions endpoint does not accept
+            # a structured `response_format` with a JSON schema; remove it
+            # and parse the assistant's text output as JSON instead.
             "temperature": 0.2,
         }
 
@@ -143,13 +144,23 @@ class DrafterAgent:
         
         # 5. Process the Response
         try:
-            # Extract and parse the JSON string from the response
-            json_text = api_result['choices'][0]['message']['content']
+            # Extract the assistant content and attempt to clean fenced code blocks
+            raw_content = api_result['choices'][0]['message']['content']
+            # Remove common Markdown code fences (```json ... ```)
+            import re
+            m = re.search(r"```(?:json)?\n?(.*)```$", raw_content, flags=re.DOTALL)
+            if m:
+                json_text = m.group(1).strip()
+            else:
+                # Fallback: strip any triple backticks if present
+                json_text = raw_content.replace('```', '').strip()
+
             draft_data = json.loads(json_text)
             
             # Determine sources used for the system log
             sources = []
-            if context.retrieved_context and context.retrieved_context.strip() != "Error: Failed to synthesize context from internal documents.":
+            # `RetrievedContext` exposes `snippets` and `confidence`.
+            if hasattr(context, "snippets") and getattr(context, "snippets"):
                 sources.append("vector_db")
             if external_info and not external_info.startswith("[External error]"):
                 sources.append("external_tool")
