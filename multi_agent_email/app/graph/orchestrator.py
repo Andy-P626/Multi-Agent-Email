@@ -402,7 +402,10 @@ class Orchestrator:
     def approve_and_send(self, task, draft, safety, routing_decision, context, external_info, send: bool = False):
         from ..models import FinalEmail
 
-        final = FinalEmail(recipient=task.recipient, subject=draft.subject, body=draft.body)
+        # Propagate trace_id (if any) from the draft to the final response so
+        # the frontend can show a Langfuse trace link.
+        trace_id = getattr(draft, "trace_id", None)
+        final = FinalEmail(recipient=task.recipient, subject=draft.subject, body=draft.body, trace_id=trace_id)
         # If send=True, integrate with email sender; here we only simulate
         return final
 

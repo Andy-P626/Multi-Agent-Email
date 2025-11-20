@@ -33,6 +33,8 @@ class DraftEmail(BaseModel):
     subject: str
     body: str
     sources: List[str] = Field(default_factory=list)
+    # Optional Langfuse trace identifier for observability
+    trace_id: Optional[str] = None
 
 
 class SafetyReport(BaseModel):
@@ -53,6 +55,8 @@ class FinalEmail(BaseModel):
     recipient: EmailStr
     subject: str
     body: str
+    # Optional trace id propagated from the drafting/synthesis step
+    trace_id: Optional[str] = None
 
 
 # --- State and Logging Models ---

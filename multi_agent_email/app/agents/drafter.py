@@ -4,7 +4,18 @@ import os
 import time
 import requests # Import the requests library for API calls
 from typing import Optional, List, Dict, Any
+from uuid import uuid4
 from ..models import EmailTask, RetrievedContext, DraftEmail
+from ..config import get_settings
+
+# Try to import langfuse SDK if available. We will fall back to generating
+# a UUID trace id if the SDK isn't present or initialization fails.
+try:
+    from langfuse import Langfuse
+    HAS_LANGFUSE = True
+except Exception:
+    Langfuse = None
+    HAS_LANGFUSE = False
 
 class DrafterAgent:
     """
@@ -131,6 +142,19 @@ class DrafterAgent:
             "temperature": 0.2,
         }
 
+        # Optionally create a Langfuse trace id (we'll attempt to initialize
+        # the SDK only if available; otherwise generate a UUID so we can
+        # surface a stable identifier in the response).
+        settings = get_settings()
+        trace_id = str(uuid4())
+
+        lf_client = None
+        if HAS_LANGFUSE and settings.langfuse_public_key and settings.langfuse_secret_key:
+            try:
+                lf_client = Langfuse(public_key=settings.langfuse_public_key, secret_key=settings.langfuse_secret_key, host=settings.langfuse_host)
+            except Exception:
+                lf_client = None
+
         # 4. Make the API Call
         api_result = self._call_openai_api(payload)
         
@@ -170,7 +194,8 @@ class DrafterAgent:
             return DraftEmail(
                 subject=draft_data.get("subject", "Brouillon d'e-mail"),
                 body=draft_data.get("body", "Le contenu du corps du brouillon est manquant."),
-                sources=sources
+                sources=sources,
+                trace_id=trace_id,
             )
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             self.logger.error(f"Failed to parse LLM response for DrafterAgent: {e}. Raw response: {api_result}")
