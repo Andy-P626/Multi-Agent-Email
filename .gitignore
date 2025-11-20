@@ -1,13 +1,3 @@
-/.venv
-.env
-__pycache__/
-*.pyc
-.DS_Store
-logs.jsonl
-/.vscode
-.idea
-/.pytest_cache
-/.mypy_cache<<<<<<< Updated upstream
 ===============================================
 
 Standard Python Ignore Rules
@@ -73,6 +63,8 @@ Environment Variables (Crucial: Do NOT commit API keys or secrets)
 The file that holds configuration (API keys, credentials, etc.)
 
 .env
+.env.bak
+.env.example 
 .flaskenv
 secrets.json
 
@@ -99,10 +91,8 @@ logs/
 Temporary files created during runtime
 
 tmp/
-=======
 .venv
 .env
 .chroma
 .pyc
 .DS_Store
->>>>>>> Stashed changes
