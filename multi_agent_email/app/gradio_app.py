@@ -8,36 +8,43 @@ from typing import Dict, Any, Tuple
 FASTAPI_ENDPOINT = "http://localhost:8000/email/draft"
 
 
+import gradio as gr
+import requests
+import json
+from typing import Dict, Any, Tuple
+
+# The FastAPI service must be running on localhost:8000
+# Use the /email/draft endpoint exposed by the FastAPI server
+FASTAPI_ENDPOINT = "http://localhost:8000/email/draft"
+
+
 # ------------------------------------------------------------------
 # 1. Helper Functions
 # ------------------------------------------------------------------
 
 def build_email_prompt(to: str, subject: str, incoming: str, instructions: str) -> str:
     """
-    Constructs a clear, comprehensive prompt for the LLM workflow 
-    from the email input fields. This function is identical to the one 
-    used in the Streamlit app.
+    Constructs a clear, comprehensive prompt for the LLM workflow
+    from the email input fields.
     """
     to = to.strip() or "Unspecified Recipient"
     subject = subject.strip() or "No Subject"
     incoming = incoming.strip() or "No incoming email content provided."
     instructions = instructions.strip() or "Draft a professional and concise reply."
 
-    return f"""
-You are an AI email assistant. Draft a clear, professional reply email.
+    return (
+        f"You are an AI email assistant. Draft a clear, professional reply email." +
+        "\n\n" +
+        f"Recipient: {to}\n" +
+        f"Subject: {subject}\n\n" +
+        "Incoming email:\n" +
+        f'"""{incoming}"""' +
+        "\n\n" +
+        "Additional instructions for your reply:\n" +
+        f'"""{instructions}"""' +
+        "\n\nWrite only the body of the reply email (no header metadata). Use appropriate greeting and closing."
+    )
 
-Recipient: {to}
-Subject: {subject}
-
-Incoming email:
-\"\"\"{incoming}\"\"\"
-
-Additional instructions for your reply:
-\"\"\"{instructions}\"\"\"
-
-Write only the body of the reply email (no header metadata). 
-Use appropriate greeting and closing.
-"""
 
 def generate_email_reply(
     to: str,
@@ -46,7 +53,7 @@ def generate_email_reply(
     instructions: str,
 ) -> Tuple[str, str, str, str]:
     """
-    The core function that the Gradio button calls. 
+    The core function that the Gradio button calls.
     It communicates with the external FastAPI server.
     """
     if not incoming_email.strip():
@@ -73,28 +80,28 @@ def generate_email_reply(
 
         if response.status_code == 200:
             result = response.json()
-                # Expecting FinalEmail: {recipient, subject, body, trace_id}
+            # Expecting FinalEmail: {recipient, subject, body, trace_id}
             final_subject = result.get("subject", subject.strip() or "(No Subject)")
             email_body = result.get("body", "")
             message = "Success"
-                trace_id = result.get("trace_id", "")
+            trace_id = result.get("trace_id", "")
 
-                # Try to resolve a clickable Langfuse URL from the backend
-                trace_link = trace_id or ""
-                if trace_id:
-                    try:
-                        r = requests.get(f"http://localhost:8000/langfuse/trace/{trace_id}", timeout=5)
-                        if r.status_code == 200:
-                            trace_url = r.json().get("trace_url")
-                            if trace_url:
-                                trace_link = f"<a href=\"{trace_url}\" target=\"_blank\">{trace_id}</a>"
-                    except Exception:
-                        # If resolution fails, just show the raw id
-                        trace_link = trace_id
+            # Try to resolve a clickable Langfuse URL from the backend
+            trace_link = trace_id or ""
+            if trace_id:
+                try:
+                    r = requests.get(f"http://localhost:8000/langfuse/trace/{trace_id}", timeout=5)
+                    if r.status_code == 200:
+                        trace_url = r.json().get("trace_url")
+                        if trace_url:
+                            trace_link = f"<a href=\"{trace_url}\" target=\"_blank\">{trace_id}</a>"
+                except Exception:
+                    # If resolution fails, just show the raw id
+                    trace_link = trace_id
 
             output_body = f"Subject: {final_subject}\n\n{email_body}"
             output_raw = json.dumps(result, indent=2)
-                return message, trace_link, output_body, output_raw
+            return message, trace_link, output_body, output_raw
         else:
             error_message = f"❌ API Error: Status Code {response.status_code}"
             raw_error = response.text
@@ -107,6 +114,7 @@ def generate_email_reply(
         return error_msg, "N/A", "", ""
     except Exception as e:
         return f"An unexpected error occurred: {e}", "N/A", "", ""
+
 
 # ------------------------------------------------------------------
 # 2. Gradio Interface Definition
@@ -131,7 +139,7 @@ with gr.Blocks(title="Multi-Agent Email Assistant") as demo:
         """
         <div style='text-align: center; margin-bottom: 20px;'>
             <h1>📧 Multi-Agent Email Assistant (Gradio)</h1>
-            <p>Client interface calling the <strong>FastAPI backend</strong> running on <code>localhost:8000/langfuse_trace</code>.</p>
+            <p>Client interface calling the <strong>FastAPI backend</strong> running on <code>localhost:8000</code>.</p>
         </div>
         """
     )
@@ -141,15 +149,15 @@ with gr.Blocks(title="Multi-Agent Email Assistant") as demo:
         gr.Markdown(
             """
             This application runs as two separate processes:
-            
+
             **1. Run the FastAPI Server (Backend):** In your first terminal window:
-            
+
             ```bash
             uvicorn main:app --host 0.0.0.0 --port 8000
             ```
-            
+
             **2. Run the Gradio Client (Frontend):** In your second terminal window:
-            
+
             ```bash
             python gradio_app.py
             ```
@@ -162,24 +170,24 @@ with gr.Blocks(title="Multi-Agent Email Assistant") as demo:
             input_to.render()
             input_subject.render()
             input_incoming.render()
-            
+
         with gr.Column(scale=1):
             gr.Markdown("## 🧠 Instructions for the Reply")
             input_instructions.render()
-            
+
             # The button triggers the function
             run_button = gr.Button("🚀 Generate Email Reply", variant="primary")
-            
+
             gr.Markdown("---")
             output_message.render()
             output_trace_id.render()
 
     gr.Markdown("---")
     gr.Markdown("## ✍️ Draft and Output")
-    
+
     # Display the final draft output
     output_draft.render()
-    
+
     # Display the raw JSON response
     with gr.Accordion("📦 Raw Backend Response", open=False):
         output_raw_json.render()
