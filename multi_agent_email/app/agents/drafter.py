@@ -149,11 +149,27 @@ class DrafterAgent:
         trace_id = str(uuid4())
 
         lf_client = None
+        lf_trace_ctx = None
         if HAS_LANGFUSE and settings.langfuse_public_key and settings.langfuse_secret_key:
             try:
                 lf_client = Langfuse(public_key=settings.langfuse_public_key, secret_key=settings.langfuse_secret_key, host=settings.langfuse_host)
+                # Create a Langfuse trace id so all subsequent events are grouped
+                try:
+                    trace_id = lf_client.create_trace_id()
+                    from langfuse import types as _lf_types
+                    lf_trace_ctx = _lf_types.TraceContext(trace_id=trace_id)
+                except Exception:
+                    # Fall back to UUID if SDK call fails
+                    pass
             except Exception:
                 lf_client = None
+
+        # Optionally record the request event in Langfuse (if available)
+        if lf_client and lf_trace_ctx:
+            try:
+                lf_client.create_event(trace_context=lf_trace_ctx, name="draft.request", input=payload)
+            except Exception:
+                pass
 
         # 4. Make the API Call
         api_result = self._call_openai_api(payload)
@@ -191,6 +207,13 @@ class DrafterAgent:
             if human_feedback:
                 sources.append("human_feedback")
             
+            # Record the assistant response in Langfuse if possible
+            if lf_client and lf_trace_ctx:
+                try:
+                    lf_client.create_event(trace_context=lf_trace_ctx, name="draft.response", input=payload, output=api_result)
+                except Exception:
+                    pass
+
             return DraftEmail(
                 subject=draft_data.get("subject", "Brouillon d'e-mail"),
                 body=draft_data.get("body", "Le contenu du corps du brouillon est manquant."),
