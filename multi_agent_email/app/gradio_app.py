@@ -73,15 +73,28 @@ def generate_email_reply(
 
         if response.status_code == 200:
             result = response.json()
-            # Expecting FinalEmail: {recipient, subject, body}
+                # Expecting FinalEmail: {recipient, subject, body, trace_id}
             final_subject = result.get("subject", subject.strip() or "(No Subject)")
             email_body = result.get("body", "")
             message = "Success"
-            trace_id = result.get("trace_id", "N/A")
+                trace_id = result.get("trace_id", "")
+
+                # Try to resolve a clickable Langfuse URL from the backend
+                trace_link = trace_id or ""
+                if trace_id:
+                    try:
+                        r = requests.get(f"http://localhost:8000/langfuse/trace/{trace_id}", timeout=5)
+                        if r.status_code == 200:
+                            trace_url = r.json().get("trace_url")
+                            if trace_url:
+                                trace_link = f"<a href=\"{trace_url}\" target=\"_blank\">{trace_id}</a>"
+                    except Exception:
+                        # If resolution fails, just show the raw id
+                        trace_link = trace_id
 
             output_body = f"Subject: {final_subject}\n\n{email_body}"
             output_raw = json.dumps(result, indent=2)
-            return message, trace_id, output_body, output_raw
+                return message, trace_link, output_body, output_raw
         else:
             error_message = f"❌ API Error: Status Code {response.status_code}"
             raw_error = response.text
